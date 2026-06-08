@@ -103,7 +103,7 @@ function App() {
     setLoading(true)
 
     try {
-      const response = await fetch("http://localhost:3001/api/diagnose", {
+      const response = await fetch("/api/diagnose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg, history: active.messages })
