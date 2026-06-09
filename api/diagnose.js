@@ -9,6 +9,10 @@ export default async function handler(req, res) {
   try {
     const { message, history } = req.body
 
+    if (!process.env.ANTHROPIC_KEY) {
+      return res.status(500).json({ error: "Missing ANTHROPIC_KEY" })
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -29,16 +33,27 @@ Choose based on:
 - MEDIUM: Significant issue, needs attention  
 - HIGH: Complete outage or critical failure`,
         messages: [
-          ...history,
+          ...(history || []),
           { role: "user", content: message }
         ]
       })
     })
 
-    const data = await response.json()
+    const text = await response.text()
     
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch(e) {
+      return res.status(500).json({ error: "Invalid JSON from Anthropic", raw: text })
+    }
+
+    if (data.error) {
+      return res.status(500).json({ error: data.error.message, type: data.error.type })
+    }
+
     if (!data.content || !data.content[0]) {
-      return res.status(500).json({ error: "No content from API", details: data })
+      return res.status(500).json({ error: "No content", data })
     }
 
     const fullText = data.content[0].text
@@ -48,6 +63,6 @@ Choose based on:
 
     res.json({ reply, severity })
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: err.message, stack: err.stack })
   }
 }
