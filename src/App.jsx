@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
-import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut } from "lucide-react"
+import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield } from "lucide-react"
 import jsPDF from "jspdf"
 import { supabase } from "./supabase"
 import Auth from "./Auth"
+import Admin from "./Admin"
 
 const QUICK_PROMPTS = [
   "My internet keeps dropping every 30 minutes",
@@ -24,6 +25,8 @@ function App() {
   const [dbLoading, setDbLoading] = useState(true)
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
 
   const active = conversations.find(c => c.id === activeId)
 
@@ -31,14 +34,19 @@ function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setAuthLoading(false)
-      if (session?.user) loadConversations(session.user.id)
-      else setDbLoading(false)
+      if (session?.user) {
+        loadConversations(session.user.id)
+        checkAdmin(session.user.id)
+      } else setDbLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) loadConversations(session.user.id)
-      else { setConversations([]); setDbLoading(false) }
+      if (session?.user) {
+        loadConversations(session.user.id)
+        checkAdmin(session.user.id)
+      }
+      else { setConversations([]); setDbLoading(false); setIsAdmin(false) }
     })
 
     return () => subscription.unsubscribe()
@@ -59,6 +67,11 @@ function App() {
       await addConversation(userId)
     }
     setDbLoading(false)
+  }
+
+  const checkAdmin = async (userId) => {
+    const { data } = await supabase.from("admins").select("user_id").eq("user_id", userId).single()
+    setIsAdmin(!!data)
   }
 
   const addConversation = async (userId) => {
@@ -200,6 +213,8 @@ function App() {
 
   if (!user) return <Auth />
 
+  if (showAdmin && isAdmin) return <Admin onBack={() => setShowAdmin(false)} />
+
   if (dbLoading) return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
       <div className="text-gray-400 text-lg">Loading your conversations...</div>
@@ -219,6 +234,14 @@ function App() {
         >
           {darkMode ? "☀️ Light mode" : "🌙 Dark mode"}
         </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowAdmin(true)}
+            className="flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-yellow-700 hover:border-yellow-400 text-yellow-500 hover:text-yellow-300 transition self-start"
+          >
+            <Shield size={12} /> Admin
+          </button>
+        )}
         <button
           onClick={() => supabase.auth.signOut()}
           className="flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-gray-700 hover:border-red-400 text-gray-400 hover:text-red-400 transition self-start"
