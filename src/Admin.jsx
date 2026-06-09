@@ -6,8 +6,10 @@ import ReactMarkdown from "react-markdown"
 export default function Admin({ onBack }) {
   const [stats, setStats] = useState(null)
   const [conversations, setConversations] = useState([])
+  const [users, setUsers] = useState({})
   const [loading, setLoading] = useState(true)
   const [selectedConvo, setSelectedConvo] = useState(null)
+  const [activeTab, setActiveTab] = useState("overview")
 
   useEffect(() => { loadStats() }, [])
 
@@ -19,7 +21,14 @@ export default function Admin({ onBack }) {
       .select("*")
       .order("created_at", { ascending: false })
 
-    const userIds = [...new Set(convs?.map(c => c.user_id))]
+    const { data: userList } = await supabase
+      .from("user_emails")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    const userMap = {}
+    userList?.forEach(u => { userMap[u.id] = u })
+
     const totalMessages = convs?.reduce((sum, c) => sum + (c.messages?.length || 0), 0) || 0
 
     const severityCounts = { HIGH: 0, MEDIUM: 0, LOW: 0 }
@@ -30,14 +39,17 @@ export default function Admin({ onBack }) {
     })
 
     setStats({
-      users: userIds.length,
+      users: userList?.length || 0,
       conversations: convs?.length || 0,
       messages: totalMessages,
       severities: severityCounts,
     })
     setConversations(convs || [])
+    setUsers(userMap)
     setLoading(false)
   }
+
+  const getUserEmail = (userId) => users[userId]?.email || "Unknown"
 
   if (loading) return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
@@ -52,60 +64,99 @@ export default function Admin({ onBack }) {
       </button>
 
       <h1 className="text-4xl font-bold text-blue-400 mb-2">🛡️ Admin Dashboard</h1>
-      <p className="text-gray-400 mb-8">System-wide statistics and monitoring</p>
+      <p className="text-gray-400 mb-6">System-wide statistics and monitoring</p>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <StatCard icon={<Users />} label="Total Users" value={stats.users} color="blue" />
-        <StatCard icon={<MessageSquare />} label="Conversations" value={stats.conversations} color="purple" />
-        <StatCard icon={<TrendingUp />} label="Messages" value={stats.messages} color="green" />
-        <StatCard icon={<AlertTriangle />} label="Critical Issues" value={stats.severities.HIGH} color="red" />
+      {/* Tabs */}
+      <div className="flex gap-2 mb-8">
+        {["overview", "users", "conversations"].map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition capitalize ${activeTab === tab ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:bg-gray-700"}`}>
+            {tab}
+          </button>
+        ))}
       </div>
 
-      {/* Severity Breakdown */}
-      <div className="bg-gray-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-xl font-bold mb-4">Severity Distribution</h2>
-        <div className="space-y-3">
-          <SeverityBar label="🔴 Critical" count={stats.severities.HIGH} total={stats.messages} color="bg-red-500" />
-          <SeverityBar label="🟡 Medium" count={stats.severities.MEDIUM} total={stats.messages} color="bg-yellow-500" />
-          <SeverityBar label="🟢 Low" count={stats.severities.LOW} total={stats.messages} color="bg-green-500" />
-        </div>
-      </div>
+      {/* Overview Tab */}
+      {activeTab === "overview" && (
+        <>
+          <div className="grid grid-cols-4 gap-4 mb-8">
+            <StatCard icon={<Users />} label="Total Users" value={stats.users} color="blue" />
+            <StatCard icon={<MessageSquare />} label="Conversations" value={stats.conversations} color="purple" />
+            <StatCard icon={<TrendingUp />} label="Messages" value={stats.messages} color="green" />
+            <StatCard icon={<AlertTriangle />} label="Critical Issues" value={stats.severities.HIGH} color="red" />
+          </div>
 
-      {/* Recent Conversations */}
-      <div className="bg-gray-800 rounded-2xl p-6">
-        <h2 className="text-xl font-bold mb-4">All Conversations</h2>
-        <div className="space-y-2">
-          {conversations.map(c => (
-            <div key={c.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-xl hover:bg-gray-600 transition">
-              <div className="flex-1 truncate">
-                <p className="font-medium truncate">{c.title}</p>
-                <p className="text-xs text-gray-400">{c.messages?.length || 0} messages • {c.user_id?.slice(0, 8)}...</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <p className="text-xs text-gray-500">{new Date(c.created_at).toLocaleString()}</p>
-                <button
-                  onClick={() => setSelectedConvo(c)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded-lg flex items-center gap-1 transition"
-                >
-                  <Eye size={14} /> View
-                </button>
-              </div>
+          <div className="bg-gray-800 rounded-2xl p-6">
+            <h2 className="text-xl font-bold mb-4">Severity Distribution</h2>
+            <div className="space-y-3">
+              <SeverityBar label="🔴 Critical" count={stats.severities.HIGH} total={stats.messages} color="bg-red-500" />
+              <SeverityBar label="🟡 Medium" count={stats.severities.MEDIUM} total={stats.messages} color="bg-yellow-500" />
+              <SeverityBar label="🟢 Low" count={stats.severities.LOW} total={stats.messages} color="bg-green-500" />
             </div>
-          ))}
+          </div>
+        </>
+      )}
+
+      {/* Users Tab */}
+      {activeTab === "users" && (
+        <div className="bg-gray-800 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-4">All Users ({Object.keys(users).length})</h2>
+          <div className="space-y-2">
+            {Object.values(users).map(u => {
+              const userConvos = conversations.filter(c => c.user_id === u.id)
+              const userMsgs = userConvos.reduce((sum, c) => sum + (c.messages?.length || 0), 0)
+              return (
+                <div key={u.id} className="flex items-center justify-between p-4 bg-gray-700 rounded-xl">
+                  <div>
+                    <p className="font-medium">{u.email}</p>
+                    <p className="text-xs text-gray-400">ID: {u.id.slice(0, 8)}... • Joined: {new Date(u.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className="flex gap-4 text-sm text-gray-400">
+                    <span>{userConvos.length} chats</span>
+                    <span>{userMsgs} msgs</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Conversations Tab */}
+      {activeTab === "conversations" && (
+        <div className="bg-gray-800 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-4">All Conversations ({conversations.length})</h2>
+          <div className="space-y-2">
+            {conversations.map(c => (
+              <div key={c.id} className="flex items-center justify-between p-3 bg-gray-700 rounded-xl hover:bg-gray-600 transition">
+                <div className="flex-1 truncate">
+                  <p className="font-medium truncate">{c.title}</p>
+                  <p className="text-xs text-gray-400">{c.messages?.length || 0} messages • 👤 {getUserEmail(c.user_id)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-gray-500">{new Date(c.created_at).toLocaleString()}</p>
+                  <button
+                    onClick={() => setSelectedConvo(c)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded-lg flex items-center gap-1 transition"
+                  >
+                    <Eye size={14} /> View
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Chat Viewer Modal */}
       {selectedConvo && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-            {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
               <div>
                 <h3 className="font-bold text-lg">{selectedConvo.title}</h3>
                 <p className="text-xs text-gray-400">
-                  {selectedConvo.messages?.length || 0} messages • User: {selectedConvo.user_id?.slice(0, 8)}... • {new Date(selectedConvo.created_at).toLocaleString()}
+                  {selectedConvo.messages?.length || 0} messages • 👤 {getUserEmail(selectedConvo.user_id)} • {new Date(selectedConvo.created_at).toLocaleString()}
                 </p>
               </div>
               <button onClick={() => setSelectedConvo(null)} className="text-gray-400 hover:text-white transition">
@@ -113,14 +164,12 @@ export default function Admin({ onBack }) {
               </button>
             </div>
 
-            {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {selectedConvo.messages?.length === 0 && (
                 <p className="text-gray-500 text-center mt-8">No messages in this conversation.</p>
               )}
               {selectedConvo.messages?.map((msg, i) => (
                 <div key={i} className={`p-3 rounded-2xl max-w-xl ${msg.role === "user" ? "bg-blue-600 self-end ml-auto text-white" : "bg-gray-700 text-gray-100"}`}>
-                  {/* Severity badge */}
                   {msg.role === "assistant" && selectedConvo.severities?.[i] && (
                     <div className={`text-xs font-bold px-2 py-1 rounded-full inline-block mb-2 ${
                       selectedConvo.severities[i] === "HIGH" ? "bg-red-500 text-white" :
