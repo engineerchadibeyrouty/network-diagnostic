@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
-import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield } from "lucide-react"
+import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield, Menu, X } from "lucide-react"
 import jsPDF from "jspdf"
 import { supabase } from "./supabase"
 import Auth from "./Auth"
@@ -27,6 +27,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const active = conversations.find(c => c.id === activeId)
 
@@ -45,8 +46,7 @@ function App() {
       if (session?.user) {
         loadConversations(session.user.id)
         checkAdmin(session.user.id)
-      }
-      else { setConversations([]); setDbLoading(false); setIsAdmin(false) }
+      } else { setConversations([]); setDbLoading(false); setIsAdmin(false) }
     })
 
     return () => subscription.unsubscribe()
@@ -212,9 +212,7 @@ function App() {
   )
 
   if (!user) return <Auth />
-
   if (showAdmin && isAdmin) return <Admin onBack={() => setShowAdmin(false)} />
-
   if (dbLoading) return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
       <div className="text-gray-400 text-lg">Loading your conversations...</div>
@@ -224,9 +222,27 @@ function App() {
   return (
     <div className={`min-h-screen flex ${bg}`}>
 
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className={`w-64 flex flex-col p-4 gap-2 border-r ${sidebarBg}`}>
-        <div className="text-blue-400 font-bold text-lg">🌐 NetDiag</div>
+      <div className={`
+        fixed md:static z-30 h-full md:h-auto
+        w-64 flex flex-col p-4 gap-2 border-r ${sidebarBg}
+        transition-transform duration-300
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+      `}>
+        <div className="flex items-center justify-between">
+          <div className="text-blue-400 font-bold text-lg">🌐 NetDiag</div>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-400 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
         <p className="text-xs text-gray-500 truncate">{user.email}</p>
         <button
           onClick={() => setDarkMode(prev => !prev)}
@@ -249,7 +265,7 @@ function App() {
           <LogOut size={12} /> Sign out
         </button>
         <button
-          onClick={() => addConversation()}
+          onClick={() => { addConversation(); setSidebarOpen(false) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-semibold transition text-white mt-1"
         >
           <Plus size={16} /> New Chat
@@ -258,7 +274,7 @@ function App() {
           {conversations.map(c => (
             <div
               key={c.id}
-              onClick={() => setActiveId(c.id)}
+              onClick={() => { setActiveId(c.id); setSidebarOpen(false) }}
               className={`flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer text-sm group transition ${sidebarItem(c.id === activeId)}`}
             >
               <div className="flex items-center gap-2 truncate">
@@ -277,9 +293,19 @@ function App() {
       </div>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col items-center py-10 px-4">
+      <div className="flex-1 flex flex-col items-center py-6 px-4 min-w-0">
+
+        {/* Mobile top bar */}
+        <div className="w-full flex items-center justify-between mb-4 md:hidden">
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-400 hover:text-white">
+            <Menu size={24} />
+          </button>
+          <div className="text-blue-400 font-bold">🌐 NetDiag</div>
+          <div className="w-6" />
+        </div>
+
         <div className="text-center mb-6">
-          <h1 className="text-4xl font-bold text-blue-400 mb-2">Network Diagnostic Assistant</h1>
+          <h1 className="text-2xl md:text-4xl font-bold text-blue-400 mb-2">Network Diagnostic Assistant</h1>
           <p className={darkMode ? "text-gray-400" : "text-gray-500"}>Describe your network problem in plain English</p>
         </div>
 
@@ -297,7 +323,7 @@ function App() {
           </div>
         )}
 
-        <div className={`w-full max-w-3xl rounded-2xl p-6 flex flex-col gap-4 min-h-96 mb-4 ${chatBg}`}>
+        <div className={`w-full max-w-3xl rounded-2xl p-4 md:p-6 flex flex-col gap-4 min-h-96 mb-4 ${chatBg}`}>
           {active && active.messages.length === 0 && (
             <div className="text-center mt-16">
               <p className={darkMode ? "text-gray-500 text-lg" : "text-gray-400 text-lg"}>No messages yet.</p>
