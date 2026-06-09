@@ -5,5 +5,5 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   db: { schema: "public" },
-  auth: { persistSession: false }
+  auth: { persistSession: true }
 })
