@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
-import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield, Menu, X } from "lucide-react"
+import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield, Menu, X, Ticket, Send } from "lucide-react"
 import jsPDF from "jspdf"
 import { supabase } from "./supabase"
 import Auth from "./Auth"
 import Admin from "./Admin"
+import Tickets from "./Tickets"
 
 const DAILY_LIMIT = 20
 
@@ -29,9 +30,15 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
+  const [showTickets, setShowTickets] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [remaining, setRemaining] = useState(null)
   const [banned, setBanned] = useState(false)
+  const [showNewTicket, setShowNewTicket] = useState(false)
+  const [ticketTitle, setTicketTitle] = useState("")
+  const [ticketMsg, setTicketMsg] = useState("")
+  const [ticketLoading, setTicketLoading] = useState(false)
+  const [ticketSuccess, setTicketSuccess] = useState(false)
 
   const active = conversations.find(c => c.id === activeId)
 
@@ -178,6 +185,30 @@ function App() {
     setLoading(false)
   }
 
+  const submitTicket = async () => {
+    if (!ticketTitle.trim() || !ticketMsg.trim()) return
+    setTicketLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch("/api/tickets", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        action: "create_ticket",
+        title: ticketTitle,
+        message: ticketMsg,
+        conversationId: active?.id || null
+      })
+    })
+    setTicketLoading(false)
+    setTicketSuccess(true)
+    setTicketTitle("")
+    setTicketMsg("")
+    setTimeout(() => { setShowNewTicket(false); setTicketSuccess(false) }, 2000)
+  }
+
   const copyToClipboard = (text, index) => {
     navigator.clipboard.writeText(text)
     setCopied(index)
@@ -266,6 +297,7 @@ function App() {
 
   if (!user) return <Auth />
   if (showAdmin && isAdmin) return <Admin onBack={() => setShowAdmin(false)} />
+  if (showTickets) return <Tickets onBack={() => setShowTickets(false)} darkMode={darkMode} />
   if (dbLoading) return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
       <div className="text-gray-400 text-lg">Loading your conversations...</div>
@@ -293,13 +325,16 @@ function App() {
             <X size={18} />
           </button>
         </div>
+
         <p className="text-xs text-gray-500 truncate">{user.email}</p>
+
         <button
           onClick={() => setDarkMode(prev => !prev)}
           className="text-xs px-3 py-1 rounded-full border border-gray-700 hover:border-blue-400 text-gray-400 hover:text-white transition self-start"
         >
           {darkMode ? "☀️ Light mode" : "🌙 Dark mode"}
         </button>
+
         {isAdmin && (
           <button
             onClick={() => setShowAdmin(true)}
@@ -308,18 +343,28 @@ function App() {
             <Shield size={12} /> Admin
           </button>
         )}
+
+        <button
+          onClick={() => setShowTickets(true)}
+          className="flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-gray-700 hover:border-blue-400 text-gray-400 hover:text-white transition self-start"
+        >
+          <Ticket size={12} /> My Tickets
+        </button>
+
         <button
           onClick={() => supabase.auth.signOut()}
           className="flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-gray-700 hover:border-red-400 text-gray-400 hover:text-red-400 transition self-start"
         >
           <LogOut size={12} /> Sign out
         </button>
+
         <button
           onClick={() => { addConversation(); setSidebarOpen(false) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-semibold transition text-white mt-1"
         >
           <Plus size={16} /> New Chat
         </button>
+
         <div className="flex flex-col gap-1 mt-2 overflow-y-auto flex-1">
           {conversations.map(c => (
             <div
@@ -380,6 +425,7 @@ function App() {
               <p className={darkMode ? "text-gray-600 text-sm mt-1" : "text-gray-400 text-sm mt-1"}>Click a prompt above or type your problem below.</p>
             </div>
           )}
+
           {active && active.messages.map((msg, i) => (
             <div key={i} className={`p-4 rounded-2xl max-w-2xl ${msg.role === "user"
               ? "bg-blue-600 self-end text-white"
@@ -397,10 +443,12 @@ function App() {
                     </div>
                   ) : <div />}
                   <div className="flex gap-2">
-                    <button onClick={() => exportPDF(msg.content, active.severities[i], i)} className="text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-gray-600" title="Export PDF">
+                    <button onClick={() => exportPDF(msg.content, active.severities[i], i)}
+                      className="text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-gray-600" title="Export PDF">
                       <FileDown size={16} />
                     </button>
-                    <button onClick={() => copyToClipboard(msg.content, i)} className="text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-gray-600" title="Copy">
+                    <button onClick={() => copyToClipboard(msg.content, i)}
+                      className="text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-gray-600" title="Copy">
                       {copied === i ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
                     </button>
                   </div>
@@ -428,6 +476,7 @@ function App() {
               ) : msg.content}
             </div>
           ))}
+
           {loading && (
             <div className={`self-start p-4 rounded-2xl flex items-center gap-2 ${darkMode ? "bg-gray-700 text-gray-400" : "bg-gray-100 text-gray-500"}`}>
               <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
@@ -436,6 +485,21 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* Open Ticket button */}
+        {active && active.messages.length > 0 && (
+          <div className="w-full max-w-3xl flex justify-end mb-2">
+            <button
+              onClick={() => {
+                setTicketTitle(active.title || "Support request")
+                setShowNewTicket(true)
+              }}
+              className="flex items-center gap-2 text-xs px-3 py-2 rounded-xl border border-gray-700 hover:border-blue-400 text-gray-400 hover:text-white transition"
+            >
+              <Ticket size={12} /> Open Ticket
+            </button>
+          </div>
+        )}
 
         <div className="w-full max-w-3xl flex gap-2">
           <input
@@ -454,7 +518,7 @@ function App() {
           </button>
         </div>
 
-        {/* Daily limit indicator */}
+        {/* Daily limit bar */}
         {remaining !== null && (
           <div className="w-full max-w-3xl mt-2">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -474,6 +538,49 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* New Ticket Modal */}
+      {showNewTicket && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg">🎫 Open Support Ticket</h3>
+              <button onClick={() => setShowNewTicket(false)} className="text-gray-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+
+            {ticketSuccess ? (
+              <div className="text-center py-8">
+                <p className="text-4xl mb-3">✅</p>
+                <p className="text-green-400 font-semibold">Ticket submitted! We'll reply via email.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <input
+                  className="bg-gray-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
+                  placeholder="Title (e.g. Internet keeps dropping)"
+                  value={ticketTitle}
+                  onChange={e => setTicketTitle(e.target.value)}
+                />
+                <textarea
+                  className="bg-gray-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400 resize-none h-32"
+                  placeholder="Describe your issue in detail..."
+                  value={ticketMsg}
+                  onChange={e => setTicketMsg(e.target.value)}
+                />
+                <button
+                  onClick={submitTicket}
+                  disabled={ticketLoading}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-3 rounded-xl font-semibold transition text-white"
+                >
+                  {ticketLoading ? "Submitting..." : "Submit Ticket"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
