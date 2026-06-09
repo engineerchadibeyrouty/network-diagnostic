@@ -6,6 +6,8 @@ import { supabase } from "./supabase"
 import Auth from "./Auth"
 import Admin from "./Admin"
 
+const DAILY_LIMIT = 20
+
 const QUICK_PROMPTS = [
   "My internet keeps dropping every 30 minutes",
   "My WiFi speed is very slow but signal is strong",
@@ -28,6 +30,8 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [remaining, setRemaining] = useState(null)
+  const [banned, setBanned] = useState(false)
 
   const active = conversations.find(c => c.id === activeId)
 
@@ -36,6 +40,7 @@ function App() {
       setUser(session?.user ?? null)
       setAuthLoading(false)
       if (session?.user) {
+        checkBan(session.user.id)
         loadConversations(session.user.id)
         checkAdmin(session.user.id)
       } else setDbLoading(false)
@@ -44,6 +49,7 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
+        checkBan(session.user.id)
         loadConversations(session.user.id)
         checkAdmin(session.user.id)
       } else { setConversations([]); setDbLoading(false); setIsAdmin(false) }
@@ -51,6 +57,14 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const checkBan = async (userId) => {
+    const { data } = await supabase.from("banned_users").select("user_id").eq("user_id", userId).single()
+    if (data) {
+      setBanned(true)
+      await supabase.auth.signOut()
+    }
+  }
 
   const loadConversations = async (userId) => {
     setDbLoading(true)
@@ -116,16 +130,45 @@ function App() {
     setLoading(true)
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+
       const response = await fetch("/api/diagnose", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session ? { "Authorization": `Bearer ${session.access_token}` } : {})
+        },
         body: JSON.stringify({ message: msg, history: active.messages })
       })
+
+      if (response.status === 403) {
+        const err = await response.json()
+        await updateConversation(active.id, {
+          messages: [...newMessages, { role: "assistant", content: `🚫 ${err.error}` }]
+        })
+        setLoading(false)
+        return
+      }
+
+      if (response.status === 429) {
+        const err = await response.json()
+        await updateConversation(active.id, {
+          messages: [...newMessages, { role: "assistant", content: `⚠️ ${err.error}` }]
+        })
+        setRemaining(0)
+        setLoading(false)
+        return
+      }
+
       const data = await response.json()
       const aiIndex = newMessages.length
       const newSeverities = { ...active.severities, [aiIndex]: data.severity }
       const finalMessages = [...newMessages, { role: "assistant", content: data.reply }]
       await updateConversation(active.id, { messages: finalMessages, severities: newSeverities })
+
+      if (data.remaining !== null && data.remaining !== undefined) {
+        setRemaining(data.remaining)
+      }
     } catch (err) {
       await updateConversation(active.id, {
         messages: [...newMessages, { role: "assistant", content: "Error connecting to server." }]
@@ -211,6 +254,16 @@ function App() {
     </div>
   )
 
+  if (banned) return (
+    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center px-4">
+      <div className="text-center">
+        <p className="text-5xl mb-4">🚫</p>
+        <h1 className="text-2xl font-bold text-red-400 mb-2">Account Banned</h1>
+        <p className="text-gray-400">Your account has been suspended. Contact support for help.</p>
+      </div>
+    </div>
+  )
+
   if (!user) return <Auth />
   if (showAdmin && isAdmin) return <Admin onBack={() => setShowAdmin(false)} />
   if (dbLoading) return (
@@ -224,10 +277,7 @@ function App() {
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-20 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/60 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
@@ -403,6 +453,26 @@ function App() {
             Send
           </button>
         </div>
+
+        {/* Daily limit indicator */}
+        {remaining !== null && (
+          <div className="w-full max-w-3xl mt-2">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Daily messages used</span>
+              <span className={remaining <= 3 ? "text-red-400" : "text-gray-500"}>
+                {DAILY_LIMIT - remaining}/{DAILY_LIMIT}
+              </span>
+            </div>
+            <div className="bg-gray-700 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  remaining <= 3 ? "bg-red-500" : remaining <= 8 ? "bg-yellow-500" : "bg-blue-500"
+                }`}
+                style={{ width: `${((DAILY_LIMIT - remaining) / DAILY_LIMIT) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

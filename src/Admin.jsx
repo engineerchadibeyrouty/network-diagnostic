@@ -2,15 +2,21 @@ import { useEffect, useState } from "react"
 import { supabase } from "./supabase"
 import {
   ArrowLeft, Users, MessageSquare, AlertTriangle, TrendingUp,
-  Eye, X, Trash2, Ban, ShieldCheck, KeyRound, ChevronDown, ChevronUp
+  Eye, X, Trash2, Ban, ShieldCheck, KeyRound, ChevronDown, ChevronUp, Zap
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+
+// Haiku pricing per token
+const PRICE_IN = 0.80 / 1_000_000
+const PRICE_OUT = 4.00 / 1_000_000
+const BUDGET_USD = 10.00
 
 export default function Admin({ onBack }) {
   const [stats, setStats] = useState(null)
   const [conversations, setConversations] = useState([])
   const [users, setUsers] = useState({})
   const [bannedSet, setBannedSet] = useState(new Set())
+  const [usageData, setUsageData] = useState({ tokensIn: 0, tokensOut: 0, cost: 0 })
   const [loading, setLoading] = useState(true)
   const [selectedConvo, setSelectedConvo] = useState(null)
   const [activeTab, setActiveTab] = useState("overview")
@@ -55,6 +61,10 @@ export default function Admin({ onBack }) {
       .from("banned_users")
       .select("user_id")
 
+    const { data: usage } = await supabase
+      .from("api_usage")
+      .select("tokens_in, tokens_out")
+
     const userMap = {}
     userList?.forEach(u => { userMap[u.id] = u })
 
@@ -68,12 +78,17 @@ export default function Admin({ onBack }) {
       })
     })
 
+    const totalIn = usage?.reduce((s, r) => s + (r.tokens_in || 0), 0) || 0
+    const totalOut = usage?.reduce((s, r) => s + (r.tokens_out || 0), 0) || 0
+    const totalCost = totalIn * PRICE_IN + totalOut * PRICE_OUT
+
     setStats({
       users: userList?.length || 0,
       conversations: convs?.length || 0,
       messages: totalMessages,
       severities: severityCounts,
     })
+    setUsageData({ tokensIn: totalIn, tokensOut: totalOut, cost: totalCost })
     setConversations(convs || [])
     setUsers(userMap)
     setBannedSet(newBannedSet)
@@ -86,9 +101,7 @@ export default function Admin({ onBack }) {
     if (res.success) {
       setBannedSet(prev => new Set([...prev, userId]))
       showToast("User banned.")
-    } else {
-      showToast(res.error || "Failed to ban user.", "error")
-    }
+    } else showToast(res.error || "Failed.", "error")
     setActionLoading(prev => ({ ...prev, [`ban_${userId}`]: false }))
   }
 
@@ -98,9 +111,7 @@ export default function Admin({ onBack }) {
     if (res.success) {
       setBannedSet(prev => { const s = new Set(prev); s.delete(userId); return s })
       showToast("User unbanned.")
-    } else {
-      showToast(res.error || "Failed to unban user.", "error")
-    }
+    } else showToast(res.error || "Failed.", "error")
     setActionLoading(prev => ({ ...prev, [`ban_${userId}`]: false }))
   }
 
@@ -112,24 +123,22 @@ export default function Admin({ onBack }) {
       setUsers(prev => { const u = { ...prev }; delete u[userId]; return u })
       setConversations(prev => prev.filter(c => c.user_id !== userId))
       showToast("User deleted.")
-    } else {
-      showToast(res.error || "Failed to delete user.", "error")
-    }
+    } else showToast(res.error || "Failed.", "error")
     setActionLoading(prev => ({ ...prev, [`delete_${userId}`]: false }))
   }
 
   const handleResetPassword = async (email) => {
     setActionLoading(prev => ({ ...prev, [`reset_${email}`]: true }))
     const res = await adminAction("reset_password", { email })
-    if (res.success) {
-      showToast("Password reset email sent.")
-    } else {
-      showToast(res.error || "Failed to send reset email.", "error")
-    }
+    if (res.success) showToast("Password reset email sent.")
+    else showToast(res.error || "Failed.", "error")
     setActionLoading(prev => ({ ...prev, [`reset_${email}`]: false }))
   }
 
   const getUserEmail = (userId) => users[userId]?.email || "Unknown"
+
+  const creditsRemaining = Math.max(0, BUDGET_USD - usageData.cost)
+  const budgetUsedPct = Math.min(100, (usageData.cost / BUDGET_USD) * 100)
 
   if (loading) return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
@@ -140,7 +149,6 @@ export default function Admin({ onBack }) {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
 
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg font-medium text-sm ${
           toast.type === "error" ? "bg-red-600 text-white" : "bg-green-600 text-white"
@@ -156,7 +164,6 @@ export default function Admin({ onBack }) {
       <h1 className="text-4xl font-bold text-blue-400 mb-2">🛡️ Admin Dashboard</h1>
       <p className="text-gray-400 mb-6">System-wide statistics and user management</p>
 
-      {/* Tabs */}
       <div className="flex gap-2 mb-8">
         {["overview", "users", "conversations"].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
@@ -168,15 +175,64 @@ export default function Admin({ onBack }) {
         ))}
       </div>
 
-      {/* Overview Tab */}
       {activeTab === "overview" && (
         <>
-          <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard icon={<Users />} label="Total Users" value={stats.users} color="blue" />
             <StatCard icon={<MessageSquare />} label="Conversations" value={stats.conversations} color="purple" />
             <StatCard icon={<TrendingUp />} label="Messages" value={stats.messages} color="green" />
             <StatCard icon={<AlertTriangle />} label="Critical Issues" value={stats.severities.HIGH} color="red" />
           </div>
+
+          {/* Credits Card */}
+          <div className="bg-gray-800 rounded-2xl p-6 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Zap size={20} className="text-yellow-400" />
+              <h2 className="text-xl font-bold">API Credits</h2>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Budget</p>
+                <p className="text-xl font-bold text-white">${BUDGET_USD.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Spent</p>
+                <p className="text-xl font-bold text-orange-400">${usageData.cost.toFixed(4)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Remaining</p>
+                <p className={`text-xl font-bold ${creditsRemaining < 1 ? "text-red-400" : "text-green-400"}`}>
+                  ${creditsRemaining.toFixed(4)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Total Tokens</p>
+                <p className="text-xl font-bold text-blue-400">
+                  {(usageData.tokensIn + usageData.tokensOut).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <span>Budget used</span>
+              <span>{budgetUsedPct.toFixed(1)}%</span>
+            </div>
+            <div className="bg-gray-700 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  budgetUsedPct > 80 ? "bg-red-500" : budgetUsedPct > 50 ? "bg-yellow-500" : "bg-green-500"
+                }`}
+                style={{ width: `${budgetUsedPct}%` }}
+              />
+            </div>
+
+            <div className="flex gap-6 mt-4 text-xs text-gray-500">
+              <span>Input tokens: {usageData.tokensIn.toLocaleString()} (${(usageData.tokensIn * PRICE_IN).toFixed(4)})</span>
+              <span>Output tokens: {usageData.tokensOut.toLocaleString()} (${(usageData.tokensOut * PRICE_OUT).toFixed(4)})</span>
+            </div>
+          </div>
+
           <div className="bg-gray-800 rounded-2xl p-6">
             <h2 className="text-xl font-bold mb-4">Severity Distribution</h2>
             <div className="space-y-3">
@@ -188,7 +244,6 @@ export default function Admin({ onBack }) {
         </>
       )}
 
-      {/* Users Tab */}
       {activeTab === "users" && (
         <div className="bg-gray-800 rounded-2xl p-6">
           <h2 className="text-xl font-bold mb-4">All Users ({Object.keys(users).length})</h2>
@@ -242,7 +297,6 @@ export default function Admin({ onBack }) {
         </div>
       )}
 
-      {/* Conversations Tab */}
       {activeTab === "conversations" && (
         <div className="bg-gray-800 rounded-2xl p-6">
           <h2 className="text-xl font-bold mb-4">All Conversations ({conversations.length})</h2>
@@ -266,7 +320,6 @@ export default function Admin({ onBack }) {
         </div>
       )}
 
-      {/* Chat Viewer Modal */}
       {selectedConvo && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
@@ -301,9 +354,6 @@ export default function Admin({ onBack }) {
                   )}
                   {msg.role === "assistant" ? (
                     <ReactMarkdown components={{
-                      h1: ({node, ...props}) => <h1 className="text-xl font-bold text-blue-400 mb-2" {...props} />,
-                      h2: ({node, ...props}) => <h2 className="text-lg font-bold text-blue-400 mb-2 mt-3" {...props} />,
-                      h3: ({node, ...props}) => <h3 className="text-md font-semibold text-blue-300 mb-1 mt-2" {...props} />,
                       p: ({node, ...props}) => <p className="mb-2 leading-relaxed" {...props} />,
                       ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
                       ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
@@ -336,9 +386,7 @@ function ActionButton({ icon, label, color, loading, onClick }) {
   return (
     <button onClick={onClick} disabled={loading}
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition disabled:opacity-50 ${colors[color]}`}>
-      {loading
-        ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        : icon}
+      {loading ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : icon}
       {label}
     </button>
   )

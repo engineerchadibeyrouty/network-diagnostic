@@ -1,7 +1,11 @@
+import { createClient } from "@supabase/supabase-js"
+
+const DAILY_LIMIT = 20
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
   if (req.method === "OPTIONS") return res.status(200).end()
   if (req.method !== "POST") return res.status(405).end()
@@ -11,6 +15,50 @@ export default async function handler(req, res) {
 
     if (!process.env.ANTHROPIC_KEY) {
       return res.status(500).json({ error: "Missing ANTHROPIC_KEY" })
+    }
+
+    const supabaseUrl = process.env.VITE_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    const authHeader = req.headers.authorization
+
+    let userId = null
+    let adminClient = null
+
+    if (authHeader && serviceKey) {
+      adminClient = createClient(supabaseUrl, serviceKey)
+      const { data: { user } } = await adminClient.auth.getUser(authHeader.replace("Bearer ", ""))
+
+      if (user) {
+        userId = user.id
+
+        // Check ban
+        const { data: banned } = await adminClient
+          .from("banned_users")
+          .select("user_id")
+          .eq("user_id", userId)
+          .single()
+
+        if (banned) {
+          return res.status(403).json({ error: "Your account has been banned. Contact support." })
+        }
+
+        // Check daily limit
+        const todayStart = new Date()
+        todayStart.setHours(0, 0, 0, 0)
+
+        const { count } = await adminClient
+          .from("api_usage")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .gte("created_at", todayStart.toISOString())
+
+        if (count >= DAILY_LIMIT) {
+          return res.status(429).json({
+            error: `Daily limit of ${DAILY_LIMIT} messages reached. Try again tomorrow.`,
+            remaining: 0
+          })
+        }
+      }
     }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -40,20 +88,32 @@ Choose based on:
     })
 
     const text = await response.text()
-    
     let data
     try {
       data = JSON.parse(text)
-    } catch(e) {
+    } catch (e) {
       return res.status(500).json({ error: "Invalid JSON from Anthropic", raw: text })
     }
 
-    if (data.error) {
-      return res.status(500).json({ error: data.error.message, type: data.error.type })
-    }
+    if (data.error) return res.status(500).json({ error: data.error.message })
+    if (!data.content || !data.content[0]) return res.status(500).json({ error: "No content" })
 
-    if (!data.content || !data.content[0]) {
-      return res.status(500).json({ error: "No content", data })
+    const tokensIn = data.usage?.input_tokens || 0
+    const tokensOut = data.usage?.output_tokens || 0
+
+    let remaining = null
+    if (userId && adminClient) {
+      await adminClient.from("api_usage").insert({ user_id: userId, tokens_in: tokensIn, tokens_out: tokensOut })
+
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const { count: newCount } = await adminClient
+        .from("api_usage")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .gte("created_at", todayStart.toISOString())
+
+      remaining = DAILY_LIMIT - (newCount || 0)
     }
 
     const fullText = data.content[0].text
@@ -61,8 +121,8 @@ Choose based on:
     const severity = severityMatch ? severityMatch[1].toUpperCase() : "MEDIUM"
     const reply = fullText.replace(/SEVERITY:\s*(LOW|MEDIUM|HIGH)/i, "").trim()
 
-    res.json({ reply, severity })
+    res.json({ reply, severity, remaining })
   } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack })
+    res.status(500).json({ error: err.message })
   }
 }
