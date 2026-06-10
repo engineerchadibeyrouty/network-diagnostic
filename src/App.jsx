@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
-import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield, Menu, X, Ticket, Send } from "lucide-react"
+import { Copy, Check, FileDown, Plus, MessageSquare, Trash2, LogOut, Shield, Menu, X, Ticket, MapPin } from "lucide-react"
 import jsPDF from "jspdf"
 import { supabase } from "./supabase"
 import Auth from "./Auth"
@@ -10,10 +10,10 @@ import Tickets from "./Tickets"
 const DAILY_LIMIT = 20
 
 const QUICK_PROMPTS = [
-  "My internet keeps dropping every 30 minutes",
-  "My WiFi speed is very slow but signal is strong",
-  "I can access some websites but not others",
-  "My router shows connected but no internet access",
+  "My Ogero fiber keeps disconnecting",
+  "MTC Touch 4G is very slow",
+  "My WiFi speed is slow but signal is strong",
+  "Alfa internet not working on my phone",
   "High ping and packet loss during video calls",
   "Fiber ONT light is red/orange",
 ]
@@ -39,6 +39,8 @@ function App() {
   const [ticketMsg, setTicketMsg] = useState("")
   const [ticketLoading, setTicketLoading] = useState(false)
   const [ticketSuccess, setTicketSuccess] = useState(false)
+  const [location, setLocation] = useState(null)
+  const [locationAsked, setLocationAsked] = useState(false)
 
   const active = conversations.find(c => c.id === activeId)
 
@@ -64,6 +66,41 @@ function App() {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  // Ask for location after login
+  useEffect(() => {
+    if (user && !locationAsked) {
+      setLocationAsked(true)
+      requestLocation()
+    }
+  }, [user])
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+
+        // Reverse geocode using free API
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+          )
+          const data = await res.json()
+          setLocation({
+            latitude: lat,
+            longitude: lon,
+            city: data.address?.city || data.address?.town || data.address?.village || null,
+            region: data.address?.state || data.address?.county || null,
+          })
+        } catch {
+          setLocation({ latitude: lat, longitude: lon, city: null, region: null })
+        }
+      },
+      () => {} // silently fail if denied
+    )
+  }
 
   const checkBan = async (userId) => {
     const { data } = await supabase.from("banned_users").select("user_id").eq("user_id", userId).single()
@@ -145,7 +182,11 @@ function App() {
           "Content-Type": "application/json",
           ...(session ? { "Authorization": `Bearer ${session.access_token}` } : {})
         },
-        body: JSON.stringify({ message: msg, history: active.messages })
+        body: JSON.stringify({
+          message: msg,
+          history: active.messages,
+          location: location || null
+        })
       })
 
       if (response.status === 403) {
@@ -307,7 +348,6 @@ function App() {
   return (
     <div className={`min-h-screen flex ${bg}`}>
 
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -327,6 +367,22 @@ function App() {
         </div>
 
         <p className="text-xs text-gray-500 truncate">{user.email}</p>
+
+        {/* Location indicator */}
+        {location && (
+          <div className="flex items-center gap-1 text-xs text-green-400">
+            <MapPin size={10} />
+            <span className="truncate">{location.city || "Location detected"}</span>
+          </div>
+        )}
+        {!location && (
+          <button
+            onClick={requestLocation}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-400 transition"
+          >
+            <MapPin size={10} /> Enable location
+          </button>
+        )}
 
         <button
           onClick={() => setDarkMode(prev => !prev)}
@@ -390,7 +446,6 @@ function App() {
       {/* Main */}
       <div className="flex-1 flex flex-col items-center py-6 px-4 min-w-0">
 
-        {/* Mobile top bar */}
         <div className="w-full flex items-center justify-between mb-4 md:hidden">
           <button onClick={() => setSidebarOpen(true)} className="text-gray-400 hover:text-white">
             <Menu size={24} />
@@ -401,7 +456,15 @@ function App() {
 
         <div className="text-center mb-6">
           <h1 className="text-2xl md:text-4xl font-bold text-blue-400 mb-2">Network Diagnostic Assistant</h1>
-          <p className={darkMode ? "text-gray-400" : "text-gray-500"}>Describe your network problem in plain English</p>
+          <p className={darkMode ? "text-gray-400" : "text-gray-500"}>
+            Describe your network problem in plain English
+          </p>
+          {location && (
+            <p className="text-xs text-green-400 mt-1 flex items-center justify-center gap-1">
+              <MapPin size={10} />
+              {location.city ? `${location.city}, Lebanon` : "Lebanon"} — location-aware diagnostics enabled
+            </p>
+          )}
         </div>
 
         {active && active.messages.length === 0 && (
@@ -486,7 +549,6 @@ function App() {
           )}
         </div>
 
-        {/* Open Ticket button */}
         {active && active.messages.length > 0 && (
           <div className="w-full max-w-3xl flex justify-end mb-2">
             <button
@@ -504,7 +566,7 @@ function App() {
         <div className="w-full max-w-3xl flex gap-2">
           <input
             className={`flex-1 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 ${inputBg}`}
-            placeholder="e.g. My internet drops every 30 minutes..."
+            placeholder="e.g. My Ogero fiber keeps dropping..."
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && sendMessage()}
@@ -518,7 +580,6 @@ function App() {
           </button>
         </div>
 
-        {/* Daily limit bar */}
         {remaining !== null && (
           <div className="w-full max-w-3xl mt-2">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -549,7 +610,6 @@ function App() {
                 <X size={20} />
               </button>
             </div>
-
             {ticketSuccess ? (
               <div className="text-center py-8">
                 <p className="text-4xl mb-3">✅</p>
@@ -559,7 +619,7 @@ function App() {
               <div className="flex flex-col gap-3">
                 <input
                   className="bg-gray-700 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
-                  placeholder="Title (e.g. Internet keeps dropping)"
+                  placeholder="Title (e.g. Ogero fiber keeps dropping)"
                   value={ticketTitle}
                   onChange={e => setTicketTitle(e.target.value)}
                 />

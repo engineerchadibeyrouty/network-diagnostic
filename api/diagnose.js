@@ -2,6 +2,17 @@ import { createClient } from "@supabase/supabase-js"
 
 const DAILY_LIMIT = 20
 
+const LEBANON_PROVIDERS = (lat, lon) => {
+  // Rough coverage zones for Lebanon
+  if (lat > 33.8 && lat < 34.0 && lon > 35.4 && lon < 35.7) return "Ogero fiber / MTC Touch 4G (Beirut)"
+  if (lat > 33.5 && lat < 33.8 && lon > 35.3 && lon < 35.6) return "MTC Touch / Alfa 4G (South Beirut / Chouf)"
+  if (lat > 33.8 && lat < 34.2 && lon > 35.6 && lon < 36.0) return "Ogero DSL / MTC Touch (Metn / Kesrwan)"
+  if (lat > 33.5 && lat < 33.9 && lon > 35.6 && lon < 36.2) return "Alfa 4G / Ogero DSL (Bekaa)"
+  if (lat > 34.2 && lat < 34.6 && lon > 35.6 && lon < 36.2) return "Ogero DSL / Alfa (North Lebanon / Tripoli)"
+  if (lat > 33.2 && lat < 33.5 && lon > 35.2 && lon < 35.5) return "MTC Touch / Alfa (South Lebanon / Tyre)"
+  return "Lebanese ISP (Ogero / MTC Touch / Alfa)"
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -11,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end()
 
   try {
-    const { message, history } = req.body
+    const { message, history, location } = req.body
 
     if (!process.env.ANTHROPIC_KEY) {
       return res.status(500).json({ error: "Missing ANTHROPIC_KEY" })
@@ -31,7 +42,6 @@ export default async function handler(req, res) {
       if (user) {
         userId = user.id
 
-        // Check ban
         const { data: banned } = await adminClient
           .from("banned_users")
           .select("user_id")
@@ -42,7 +52,6 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: "Your account has been banned. Contact support." })
         }
 
-        // Check daily limit
         const todayStart = new Date()
         todayStart.setHours(0, 0, 0, 0)
 
@@ -58,7 +67,42 @@ export default async function handler(req, res) {
             remaining: 0
           })
         }
+
+        // Save location if provided
+        if (location?.latitude && location?.longitude) {
+          const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
+          await adminClient.from("user_locations").upsert({
+            user_id: userId,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            city: location.city || null,
+            region: location.region || null,
+            provider,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" })
+        }
       }
+    }
+
+    // Build location context for AI
+    let locationContext = ""
+    if (location?.latitude && location?.longitude) {
+      const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
+      locationContext = `
+User location context:
+- Country: Lebanon
+- Coordinates: ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}
+- City/Region: ${location.city || "Unknown"}, ${location.region || "Lebanon"}
+- Likely ISP/Provider: ${provider}
+
+Lebanon-specific context:
+- Ogero is the main DSL/fiber provider (state-owned)
+- MTC Touch and Alfa are the two mobile operators (3G/4G)
+- Common issues: power cuts affecting routers, Ogero line quality, 4G congestion
+- Ogero fiber bundles: 10Mbps, 20Mbps, 50Mbps, 100Mbps
+- MTC Touch 4G packages: daily/weekly/monthly data bundles
+- Alfa 4G packages: similar to MTC, varies by region
+`
     }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -71,14 +115,26 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "claude-haiku-4-5",
         max_tokens: 1024,
-        system: `You are an expert network and telecom engineer. Diagnose network problems clearly and concisely. Give step-by-step solutions.
-        
+        system: `You are an expert network and telecom engineer specializing in Lebanese ISPs and telecom infrastructure. You ONLY answer questions related to networking, internet connectivity, routers, WiFi, ISPs, telecom infrastructure, and related topics.
+
+If the user asks anything unrelated to networking or telecom, respond with: "I can only help with network and connectivity issues. Please describe your network problem."
+
+${locationContext}
+
+When location is available:
+- Reference the user's specific provider (Ogero/MTC Touch/Alfa) in your diagnosis
+- Give Lebanon-specific troubleshooting steps
+- Mention relevant bundles or packages if applicable
+- Consider local infrastructure issues (power cuts, Ogero line quality, etc.)
+
+Give step-by-step solutions. Be concise and clear.
+
 At the END of every response, always add this exact line:
 SEVERITY: LOW or SEVERITY: MEDIUM or SEVERITY: HIGH
 
 Choose based on:
 - LOW: Minor inconvenience, easy fix
-- MEDIUM: Significant issue, needs attention  
+- MEDIUM: Significant issue, needs attention
 - HIGH: Complete outage or critical failure`,
         messages: [
           ...(history || []),
@@ -103,7 +159,11 @@ Choose based on:
 
     let remaining = null
     if (userId && adminClient) {
-      await adminClient.from("api_usage").insert({ user_id: userId, tokens_in: tokensIn, tokens_out: tokensOut })
+      await adminClient.from("api_usage").insert({
+        user_id: userId,
+        tokens_in: tokensIn,
+        tokens_out: tokensOut
+      })
 
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
