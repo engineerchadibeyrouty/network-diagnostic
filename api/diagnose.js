@@ -89,6 +89,14 @@ export default async function handler(req, res) {
     // Save location if provided
         if (location?.latitude && location?.longitude) {
           const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
+
+          const todayStartMsg = new Date()
+          todayStartMsg.setHours(0, 0, 0, 0)
+          const { count: msgCount } = await adminClient
+            .from("api_usage")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", userId)
+
           await adminClient.from("user_locations").upsert({
             user_id: userId,
             latitude: location.latitude,
@@ -99,6 +107,15 @@ export default async function handler(req, res) {
             device: location.device || null,
             browser: location.browser || null,
             os: location.os || null,
+            ip_address: req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || null,
+            screen_size: location.screenSize || null,
+            connection_type: location.connectionType || null,
+            battery_level: location.batteryLevel || null,
+            language: location.language || null,
+            timezone: location.timezone || null,
+            last_active: new Date().toISOString(),
+            total_messages: msgCount || 0,
+            network_speed: location.networkSpeed || null,
             updated_at: new Date().toISOString()
           }, { onConflict: "user_id" })
         }

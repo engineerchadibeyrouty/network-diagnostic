@@ -392,11 +392,20 @@ export default function Admin({ onBack }) {
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{getUserEmail(loc.user_id)}</p>
                       <p className="text-xs text-gray-400">
-                        {loc.city || "Unknown"}, {loc.region || "Lebanon"} • {loc.provider}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {loc.device || "?"} • {loc.browser || "?"} • {loc.os || "?"}
-                      </p>
+                       {loc.city || "Unknown"}, {loc.region || "Lebanon"} • {loc.provider}
+                         </p>
+                         <p className="text-xs text-gray-500">
+                         {loc.device || "?"} • {loc.browser || "?"} • {loc.os || "?"}
+                         </p>
+                         <p className="text-xs text-gray-500">
+                         📱 {loc.screen_size || "?"} • 🌐 {loc.connection_type || "?"} • 🔋 {loc.battery_level || "?"}
+                         </p>
+                         <p className="text-xs text-gray-500">
+                         🗣️ {loc.language || "?"} • 🕐 {loc.timezone || "?"} • 📡 {loc.network_speed || "?"}
+                         </p>
+                         <p className="text-xs text-gray-500">
+                          🔗 {loc.ip_address || "?"} • 💬 {loc.total_messages || 0} msgs • ⏱️ {loc.last_active ? new Date(loc.last_active).toLocaleString() : "?"}
+                           </p>
                     </div>
                   </div>
                   <a href={mapUrl(loc)} target="_blank" rel="noreferrer" className="text-xs bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded-lg text-blue-400 hover:text-blue-300 transition flex-shrink-0 ml-3">

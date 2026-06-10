@@ -75,7 +75,7 @@ function App() {
     }
   }, [user])
 
-  const getDeviceInfo = () => {
+  const getDeviceInfo = async () => {
   const ua = navigator.userAgent
   let device = "Unknown"
   let browser = "Unknown"
@@ -83,12 +83,12 @@ function App() {
 
   if (/iPhone/.test(ua)) device = "iPhone"
   else if (/iPad/.test(ua)) device = "iPad"
-  else if (/SM-/.test(ua)) device = ua.match(/SM-[A-Za-z0-9]+/)?.[0] || "Samsung"
-  else if (/Pixel/.test(ua)) device = ua.match(/Pixel[^;)]*/)?.[0] || "Pixel"
-  else if (/HUAWEI/.test(ua)) device = ua.match(/HUAWEI[^;)]*/)?.[0] || "Huawei"
-  else if (/Xiaomi|Redmi|POCO/.test(ua)) device = ua.match(/(Xiaomi|Redmi|POCO)[^;)]*/)?.[0] || "Xiaomi"
+  else if (/SM-/.test(ua)) device = (ua.match(/SM-[A-Za-z0-9]+/) || ["Samsung"])[0]
+  else if (/Pixel/.test(ua)) device = (ua.match(/Pixel[^;)]*/) || ["Pixel"])[0]
+  else if (/HUAWEI/.test(ua)) device = (ua.match(/HUAWEI[^;)]*/) || ["Huawei"])[0]
+  else if (/Xiaomi|Redmi|POCO/.test(ua)) device = (ua.match(/(Xiaomi|Redmi|POCO)[^;)]*/) || ["Xiaomi"])[0]
   else if (/Android/.test(ua)) {
-    const match = ua.match(/;\s*([^;)]+)\s*Build/)
+    var match = ua.match(/;\s*([^;)]+)\s*Build/)
     device = match ? match[1].trim() : "Android Device"
   }
   else if (/Macintosh/.test(ua)) device = "Mac"
@@ -104,26 +104,70 @@ function App() {
   if (/Windows NT 10/.test(ua)) os = "Windows 10/11"
   else if (/Windows NT/.test(ua)) os = "Windows"
   else if (/Mac OS X/.test(ua)) os = "macOS"
-  else if (/Android\s*([\d.]+)?/.test(ua)) os = "Android " + (ua.match(/Android\s*([\d.]+)/)?.[1] || "")
-  else if (/iPhone OS\s*([\d_]+)?/.test(ua)) os = "iOS " + (ua.match(/iPhone OS\s*([\d_]+)/)?.[1]?.replace(/_/g, ".") || "")
+  else if (/Android/.test(ua)) os = "Android " + ((ua.match(/Android\s*([\d.]+)/) || [])[1] || "")
+  else if (/iPhone OS/.test(ua)) os = "iOS " + ((ua.match(/iPhone OS\s*([\d_]+)/) || [])[1] || "").replace(/_/g, ".")
   else if (/Linux/.test(ua)) os = "Linux"
 
-  return { device, browser, os }
+  var screenSize = window.screen.width + "x" + window.screen.height
+  var language = navigator.language || "Unknown"
+  var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown"
+
+  var connectionType = "Unknown"
+  if (navigator.connection) {
+    connectionType = navigator.connection.effectiveType || "Unknown"
+    if (navigator.connection.type) connectionType = navigator.connection.type + " (" + navigator.connection.effectiveType + ")"
+  }
+
+  var batteryLevel = "Unknown"
+  try {
+    if (navigator.getBattery) {
+      var battery = await navigator.getBattery()
+      batteryLevel = Math.round(battery.level * 100) + "%" + (battery.charging ? " (charging)" : "")
+    }
+  } catch (e) {
+    batteryLevel = "N/A"
+  }
+
+  var networkSpeed = "Unknown"
+  try {
+    var startTime = performance.now()
+    await fetch("/api/diagnose", { method: "OPTIONS" })
+    var endTime = performance.now()
+    var ping = Math.round(endTime - startTime)
+    networkSpeed = ping + "ms ping"
+    if (navigator.connection && navigator.connection.downlink) {
+      networkSpeed = navigator.connection.downlink + " Mbps / " + ping + "ms ping"
+    }
+  } catch (e) {
+    networkSpeed = "N/A"
+  }
+
+  return {
+    device: device,
+    browser: browser,
+    os: os,
+    screenSize: screenSize,
+    language: language,
+    timezone: timezone,
+    connectionType: connectionType,
+    batteryLevel: batteryLevel,
+    networkSpeed: networkSpeed
+  }
 }
 
 const requestLocation = () => {
   if (!navigator.geolocation) return
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
-      const lat = pos.coords.latitude
-      const lon = pos.coords.longitude
-      const deviceInfo = getDeviceInfo()
+      var lat = pos.coords.latitude
+      var lon = pos.coords.longitude
+      var deviceInfo = await getDeviceInfo()
 
       try {
-        const res = await fetch(
+        var res = await fetch(
           "https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json"
         )
-        const data = await res.json()
+        var data = await res.json()
         setLocation({
           latitude: lat,
           longitude: lon,
@@ -131,7 +175,13 @@ const requestLocation = () => {
           region: data.address?.state || data.address?.county || null,
           device: deviceInfo.device,
           browser: deviceInfo.browser,
-          os: deviceInfo.os
+          os: deviceInfo.os,
+          screenSize: deviceInfo.screenSize,
+          language: deviceInfo.language,
+          timezone: deviceInfo.timezone,
+          connectionType: deviceInfo.connectionType,
+          batteryLevel: deviceInfo.batteryLevel,
+          networkSpeed: deviceInfo.networkSpeed
         })
       } catch (e) {
         setLocation({
@@ -141,7 +191,13 @@ const requestLocation = () => {
           region: null,
           device: deviceInfo.device,
           browser: deviceInfo.browser,
-          os: deviceInfo.os
+          os: deviceInfo.os,
+          screenSize: deviceInfo.screenSize,
+          language: deviceInfo.language,
+          timezone: deviceInfo.timezone,
+          connectionType: deviceInfo.connectionType,
+          batteryLevel: deviceInfo.batteryLevel,
+          networkSpeed: deviceInfo.networkSpeed
         })
       }
     },
