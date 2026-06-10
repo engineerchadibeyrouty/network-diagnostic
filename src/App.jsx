@@ -76,10 +76,10 @@ function App() {
   }, [user])
 
   const getDeviceInfo = async () => {
-  const ua = navigator.userAgent
-  let device = "Unknown"
-  let browser = "Unknown"
-  let os = "Unknown"
+  var ua = navigator.userAgent
+  var device = "Unknown"
+  var browser = "Unknown"
+  var os = "Unknown"
 
   if (/iPhone/.test(ua)) device = "iPhone"
   else if (/iPad/.test(ua)) device = "iPad"
@@ -142,6 +142,14 @@ function App() {
     networkSpeed = "N/A"
   }
 
+  var cpuCores = navigator.hardwareConcurrency || null
+  var ramGb = navigator.deviceMemory || null
+  var touchSupport = "ontouchstart" in window || navigator.maxTouchPoints > 0
+  var colorDepth = window.screen.colorDepth || null
+  var pixelRatio = window.devicePixelRatio || null
+  var orientation = window.screen.orientation ? window.screen.orientation.type.replace("-primary", "").replace("-secondary", "") : (window.innerHeight > window.innerWidth ? "portrait" : "landscape")
+  var platform = navigator.platform || navigator.userAgentData?.platform || "Unknown"
+
   return {
     device: device,
     browser: browser,
@@ -151,7 +159,14 @@ function App() {
     timezone: timezone,
     connectionType: connectionType,
     batteryLevel: batteryLevel,
-    networkSpeed: networkSpeed
+    networkSpeed: networkSpeed,
+    cpuCores: cpuCores,
+    ramGb: ramGb,
+    touchSupport: touchSupport,
+    colorDepth: colorDepth,
+    pixelRatio: pixelRatio,
+    orientation: orientation,
+    platform: platform
   }
 }
 
@@ -168,37 +183,19 @@ const requestLocation = () => {
           "https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json"
         )
         var data = await res.json()
-        setLocation({
+        setLocation(Object.assign({
           latitude: lat,
           longitude: lon,
           city: data.address?.city || data.address?.town || data.address?.village || null,
-          region: data.address?.state || data.address?.county || null,
-          device: deviceInfo.device,
-          browser: deviceInfo.browser,
-          os: deviceInfo.os,
-          screenSize: deviceInfo.screenSize,
-          language: deviceInfo.language,
-          timezone: deviceInfo.timezone,
-          connectionType: deviceInfo.connectionType,
-          batteryLevel: deviceInfo.batteryLevel,
-          networkSpeed: deviceInfo.networkSpeed
-        })
+          region: data.address?.state || data.address?.county || null
+        }, deviceInfo))
       } catch (e) {
-        setLocation({
+        setLocation(Object.assign({
           latitude: lat,
           longitude: lon,
           city: null,
-          region: null,
-          device: deviceInfo.device,
-          browser: deviceInfo.browser,
-          os: deviceInfo.os,
-          screenSize: deviceInfo.screenSize,
-          language: deviceInfo.language,
-          timezone: deviceInfo.timezone,
-          connectionType: deviceInfo.connectionType,
-          batteryLevel: deviceInfo.batteryLevel,
-          networkSpeed: deviceInfo.networkSpeed
-        })
+          region: null
+        }, deviceInfo))
       }
     },
     () => {}

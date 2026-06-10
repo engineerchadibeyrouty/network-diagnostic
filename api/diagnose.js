@@ -90,8 +90,6 @@ export default async function handler(req, res) {
         if (location?.latitude && location?.longitude) {
           const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
 
-          const todayStartMsg = new Date()
-          todayStartMsg.setHours(0, 0, 0, 0)
           const { count: msgCount } = await adminClient
             .from("api_usage")
             .select("*", { count: "exact", head: true })
@@ -116,6 +114,13 @@ export default async function handler(req, res) {
             last_active: new Date().toISOString(),
             total_messages: msgCount || 0,
             network_speed: location.networkSpeed || null,
+            cpu_cores: location.cpuCores || null,
+            ram_gb: location.ramGb || null,
+            touch_support: location.touchSupport || false,
+            color_depth: location.colorDepth || null,
+            pixel_ratio: location.pixelRatio || null,
+            orientation: location.orientation || null,
+            platform: location.platform || null,
             updated_at: new Date().toISOString()
           }, { onConflict: "user_id" })
         }
