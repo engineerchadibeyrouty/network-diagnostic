@@ -75,32 +75,79 @@ function App() {
     }
   }, [user])
 
-  const requestLocation = () => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude
-        const lon = pos.coords.longitude
+  const getDeviceInfo = () => {
+  const ua = navigator.userAgent
+  let device = "Unknown"
+  let browser = "Unknown"
+  let os = "Unknown"
 
-        // Reverse geocode using free API
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
-          )
-          const data = await res.json()
-          setLocation({
-            latitude: lat,
-            longitude: lon,
-            city: data.address?.city || data.address?.town || data.address?.village || null,
-            region: data.address?.state || data.address?.county || null,
-          })
-        } catch {
-          setLocation({ latitude: lat, longitude: lon, city: null, region: null })
-        }
-      },
-      () => {} // silently fail if denied
-    )
+  if (/iPhone/.test(ua)) device = "iPhone"
+  else if (/iPad/.test(ua)) device = "iPad"
+  else if (/SM-/.test(ua)) device = ua.match(/SM-[A-Za-z0-9]+/)?.[0] || "Samsung"
+  else if (/Pixel/.test(ua)) device = ua.match(/Pixel[^;)]*/)?.[0] || "Pixel"
+  else if (/HUAWEI/.test(ua)) device = ua.match(/HUAWEI[^;)]*/)?.[0] || "Huawei"
+  else if (/Xiaomi|Redmi|POCO/.test(ua)) device = ua.match(/(Xiaomi|Redmi|POCO)[^;)]*/)?.[0] || "Xiaomi"
+  else if (/Android/.test(ua)) {
+    const match = ua.match(/;\s*([^;)]+)\s*Build/)
+    device = match ? match[1].trim() : "Android Device"
   }
+  else if (/Macintosh/.test(ua)) device = "Mac"
+  else if (/Windows/.test(ua)) device = "Windows PC"
+  else if (/Linux/.test(ua)) device = "Linux PC"
+
+  if (/Edg\//.test(ua)) browser = "Edge"
+  else if (/Chrome\//.test(ua)) browser = "Chrome"
+  else if (/Firefox\//.test(ua)) browser = "Firefox"
+  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = "Safari"
+  else if (/OPR\//.test(ua)) browser = "Opera"
+
+  if (/Windows NT 10/.test(ua)) os = "Windows 10/11"
+  else if (/Windows NT/.test(ua)) os = "Windows"
+  else if (/Mac OS X/.test(ua)) os = "macOS"
+  else if (/Android\s*([\d.]+)?/.test(ua)) os = "Android " + (ua.match(/Android\s*([\d.]+)/)?.[1] || "")
+  else if (/iPhone OS\s*([\d_]+)?/.test(ua)) os = "iOS " + (ua.match(/iPhone OS\s*([\d_]+)/)?.[1]?.replace(/_/g, ".") || "")
+  else if (/Linux/.test(ua)) os = "Linux"
+
+  return { device, browser, os }
+}
+
+const requestLocation = () => {
+  if (!navigator.geolocation) return
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude
+      const lon = pos.coords.longitude
+      const deviceInfo = getDeviceInfo()
+
+      try {
+        const res = await fetch(
+          "https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json"
+        )
+        const data = await res.json()
+        setLocation({
+          latitude: lat,
+          longitude: lon,
+          city: data.address?.city || data.address?.town || data.address?.village || null,
+          region: data.address?.state || data.address?.county || null,
+          device: deviceInfo.device,
+          browser: deviceInfo.browser,
+          os: deviceInfo.os
+        })
+      } catch (e) {
+        setLocation({
+          latitude: lat,
+          longitude: lon,
+          city: null,
+          region: null,
+          device: deviceInfo.device,
+          browser: deviceInfo.browser,
+          os: deviceInfo.os
+        })
+      }
+    },
+    () => {}
+  )
+}
 
   const checkBan = async (userId) => {
     const { data } = await supabase.from("banned_users").select("user_id").eq("user_id", userId).single()

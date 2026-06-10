@@ -394,6 +394,9 @@ export default function Admin({ onBack }) {
                       <p className="text-xs text-gray-400">
                         {loc.city || "Unknown"}, {loc.region || "Lebanon"} • {loc.provider}
                       </p>
+                      <p className="text-xs text-gray-500">
+                        {loc.device || "?"} • {loc.browser || "?"} • {loc.os || "?"}
+                      </p>
                     </div>
                   </div>
                   <a href={mapUrl(loc)} target="_blank" rel="noreferrer" className="text-xs bg-gray-600 hover:bg-gray-500 px-3 py-1 rounded-lg text-blue-400 hover:text-blue-300 transition flex-shrink-0 ml-3">

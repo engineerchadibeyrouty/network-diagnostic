@@ -86,6 +86,22 @@ export default async function handler(req, res) {
 
     // Build location context for AI
     let locationContext = ""
+    // Save location if provided
+        if (location?.latitude && location?.longitude) {
+          const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
+          await adminClient.from("user_locations").upsert({
+            user_id: userId,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            city: location.city || null,
+            region: location.region || null,
+            provider,
+            device: location.device || null,
+            browser: location.browser || null,
+            os: location.os || null,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" })
+        }
     if (location?.latitude && location?.longitude) {
       const provider = LEBANON_PROVIDERS(location.latitude, location.longitude)
       locationContext = `
