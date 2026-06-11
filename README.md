@@ -37,7 +37,14 @@ An AI-powered full-stack web application that diagnoses network problems using C
 
 ## Screenshots
 
-*(Add screenshots here)*
+<img width="937" height="964" alt="image" src="https://github.com/user-attachments/assets/451a383c-8296-4b70-b060-0c4a27fa948f" />
+
+<img width="376" height="564" alt="image" src="https://github.com/user-attachments/assets/28683a14-68a9-4255-9ace-ab1f1d862369" />
+
+<img width="985" height="981" alt="image" src="https://github.com/user-attachments/assets/32fd1717-d83a-4c27-a1f6-f7542240a18c" />
+
+
+
 
 ---
 
