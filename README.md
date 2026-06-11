@@ -1,16 +1,52 @@
-# React + Vite
+# NetDiag — AI-Powered Network Diagnostic Assistant
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> Live Demo: https://network-diagnostic-delta.vercel.app
 
-Currently, two official plugins are available:
+An AI-powered full-stack web application that diagnoses network problems using Claude AI. Built with Lebanon's telecom infrastructure in mind (Ogero, MTC Touch, Alfa).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- AI network diagnosis with severity classification (LOW / MEDIUM / HIGH)
+- User authentication with ban enforcement and rate limiting (20 msg/day)
+- Admin dashboard with 6 tabs: Overview, Users, Conversations, Tickets, Locations, Speed Tests
+- Support ticket system with email notifications
+- Built-in speed test (download / upload / ping / jitter)
+- Location-based ISP detection (Ogero / MTC Touch / Alfa)
+- User analytics with 19+ data points per user
+- Multi-language support: English, Arabic (RTL), French
+- PDF export of diagnostic reports
+- Mobile responsive with dark/light mode
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React + Vite + Tailwind CSS v4 |
+| Backend | Vercel Serverless Functions (Node.js) |
+| AI | Claude API (Anthropic) |
+| Database | Supabase (PostgreSQL) |
+| Auth | Supabase Auth |
+| Email | Resend API |
+| Deployment | Vercel |
+
+---
+
+## Screenshots
+
+*(Add screenshots here)*
+
+---
+
+## Local Setup
+
+```bash
+git clone https://github.com/engineerchadibeyrouty/network-diagnostic
+cd network-diagnostic
+npm install
+```
+
+Create a `.env` file:
